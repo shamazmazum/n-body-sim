@@ -1,0 +1,6 @@
+#ifndef _PROGRAM_LOC_H_
+#define _PROGRAM_LOC_H_
+
+#define PROCESS_PATH "@n_body_sim_program_path@/process.cl"
+
+#endif
