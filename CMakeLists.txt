@@ -10,4 +10,4 @@ find_package (OpenCL REQUIRED)
 find_package (ProgramMap REQUIRED)
 
 add_subdirectory (src)
-install (FILES examples/config DESTINATION share/examples/n-body-config)
+install (FILES examples/config DESTINATION share/examples/n-body-sim)
