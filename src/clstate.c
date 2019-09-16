@@ -6,6 +6,14 @@
 #include <program_loc.h>
 #include "clstate.h"
 
+#define KernelHelper(place, name) do {                          \
+    place = clCreateKernel (state->program, name, NULL);        \
+    if (place == NULL) {                                        \
+        fprintf (stderr, "Cannot create kernel: %s\n", name);   \
+        goto bad;                                               \
+    }                                                           \
+    } while (0)
+
 struct cl_state {
     cl_context context;
     cl_command_queue queue;
@@ -29,6 +37,7 @@ struct cl_state {
 
 void destroy_cl_state(struct cl_state *state)
 {
+    if (state == NULL) return;
     if (state->energy != NULL) clReleaseMemObject (state->energy);
     if (state->mass != NULL) clReleaseMemObject (state->mass);
     if (state->pos != NULL) clReleaseMemObject (state->pos);
@@ -45,7 +54,7 @@ void destroy_cl_state(struct cl_state *state)
     free (state);
 }
 
-struct cl_state* create_cl_state (cl_float delta)
+struct cl_state* create_cl_state (const char *solver, cl_float delta)
 {
     cl_context_properties properties[3];
     cl_uint num_of_platforms=0;
@@ -54,6 +63,14 @@ struct cl_state* create_cl_state (cl_float delta)
     cl_uint num_of_devices=0;
     struct cl_state *state = NULL;
     size_t group_size;
+    const char *solver_kernel;
+
+    if (strcmp (solver, "rk2") == 0) solver_kernel = "take_step_rk2";
+    else if (strcmp (solver, "euler") == 0) solver_kernel = "take_step_euler";
+    else {
+        fprintf (stderr, "No such solver: %s\n", solver);
+        goto bad;
+    }
 
     // retreives a list of platforms available
     if (clGetPlatformIDs (1, &platform_id, &num_of_platforms)!= CL_SUCCESS) {
@@ -122,35 +139,11 @@ struct cl_state* create_cl_state (cl_float delta)
         goto bad;
     }
 
-    state->step = clCreateKernel (state->program, "take_step_euler", NULL);
-    if (state->step == NULL) {
-        fprintf (stderr, "Cannot create integrator kernel\n");
-        goto bad;
-    }
-
-    state->kinetic_energy = clCreateKernel (state->program, "kinetic_energy", NULL);
-    if (state->kinetic_energy == NULL) {
-        fprintf (stderr, "Cannot create kinetic energy kernel\n");
-        goto bad;
-    }
-
-    state->potential_energy = clCreateKernel (state->program, "potential_energy", NULL);
-    if (state->potential_energy == NULL) {
-        fprintf (stderr, "Cannot create potential energy kernel\n");
-        goto bad;
-    }
-
-    state->reduce1 = clCreateKernel (state->program, "reduce", NULL);
-    if (state->reduce1 == NULL) {
-        fprintf (stderr, "Cannot create reduction kernel\n");
-        goto bad;
-    }
-
-    state->reduce2 = clCreateKernel (state->program, "reduce", NULL);
-    if (state->reduce2 == NULL) {
-        fprintf (stderr, "Cannot create integrator kernel\n");
-        goto bad;
-    }
+    KernelHelper (state->step, solver_kernel);
+    KernelHelper (state->kinetic_energy, "kinetic_energy");
+    KernelHelper (state->potential_energy, "potential_energy");
+    KernelHelper (state->reduce1, "reduce");
+    KernelHelper (state->reduce2, "reduce");
 
     return state;
 
@@ -279,9 +272,9 @@ int save_gpu_memory (struct cl_state *state, int which, const char *name)
 
     for (i=0; i<state->nbodies; i++) {
         if (scalar_map)
-            fprintf (handle, "%f\n", scalar[i]);
+            fprintf (handle, "%.10f\n", scalar[i]);
         else
-            fprintf (handle, "%f %f\n", vector[i].x, vector[i].y);
+            fprintf (handle, "%.10f %.10f\n", vector[i].x, vector[i].y);
     }
     unmap_gpu_memory (state, which, map);
     res = 1;

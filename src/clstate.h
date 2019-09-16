@@ -8,7 +8,7 @@
 
 struct cl_state;
 
-struct cl_state* create_cl_state (cl_float delta);
+struct cl_state* create_cl_state (const char *solver, cl_float delta);
 void destroy_cl_state(struct cl_state *state);
 
 size_t initialize_memory (struct cl_state *state, size_t n);

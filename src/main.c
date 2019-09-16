@@ -113,7 +113,7 @@ int main (int argc, char *argv[])
     print_config (&config);
     size_t nbodies = config.nbodies;
     
-    struct cl_state *state = create_cl_state (config.delta);
+    struct cl_state *state = create_cl_state (config.solver, config.delta);
 
     if (state == NULL) {
         fprintf (stderr, "Cannot initialize OpenCL state\n");

@@ -17,7 +17,8 @@ static struct config_parameters conf_default = {
     .delta = 0.001,
     .nbodies = 15360,
     .snapshot_steps = 1000,
-    .check_energy = 2000
+    .check_energy = 2000,
+    .solver = "rk2"
 };
 
 static unsigned int iniparser_getuint (dictionary *dict, const char *name, unsigned int def)
@@ -51,6 +52,7 @@ void parse_config (struct config_parameters *config, const char *name)
     config->nbodies = iniparser_getuint (dict, "general:nbodies", config->nbodies);
     config->snapshot_steps = iniparser_getuint (dict, "general:snapshot_steps", config->snapshot_steps);
     config->check_energy = iniparser_getuint (dict, "general:check_energy", config->check_energy);
+    config->solver = iniparser_getstring (dict, "general:solver", config->solver);
 
     iniparser_freedict (dict);
 }
