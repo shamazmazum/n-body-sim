@@ -82,6 +82,10 @@ __kernel void take_step_rk2 (__constant float *m,
     float2 vpred = v_me + delta * mv;
     float2 rpred = r_me + delta * mr;
 
+    r[glob_id] = rpred;
+    v[glob_id] = vpred;
+    barrier (CLK_GLOBAL_MEM_FENCE);
+
     float2 nv = collect_accel (rpred, m, loc_m, r, loc_r);
     float2 nr = vpred;
 
