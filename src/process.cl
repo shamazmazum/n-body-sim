@@ -6,7 +6,7 @@ float2 accel (float2 r_me, __local float *m, __local float2 *r)
     size_t grp_size = get_local_size(0);
     size_t i;
 
-    float2 res = (0.0f, 0.0f);
+    float2 res = (float2) (0.0f);
 
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
@@ -27,7 +27,7 @@ float2 collect_accel (float2 r_me,
     size_t grp_size = get_local_size(0);
     size_t loc_id = get_local_id(0);
 
-    float2 res = (0.0f, 0.0f);
+    float2 res = (float2) (0.0f);
     size_t i, glob_id;
 
     for (i=0; i< num_groups; i++) {
@@ -37,6 +37,7 @@ float2 collect_accel (float2 r_me,
         barrier (CLK_LOCAL_MEM_FENCE);
 
         res += accel (r_me, loc_m, loc_r);
+        barrier (CLK_LOCAL_MEM_FENCE);
     }
 
     return res;
@@ -138,6 +139,7 @@ __kernel void potential_energy (__constant float *m,
         barrier (CLK_LOCAL_MEM_FENCE);
 
         res += pe_group (m_me, r_me, loc_m, loc_r);
+        barrier (CLK_LOCAL_MEM_FENCE);
     }
 
     out[glob_id] = res;
@@ -153,7 +155,7 @@ __kernel void reduce (__global float *array,
     size_t local_size = get_local_size(0);
     size_t group_num = get_group_id(0);
     size_t i;
-    float acc = 0;
+    float acc = 0.0f;
 
     for (i=0; i<length; i+=global_size) {
         size_t idx = global_idx + i;
