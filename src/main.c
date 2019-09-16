@@ -113,7 +113,7 @@ int main (int argc, char *argv[])
     print_config (&config);
     size_t nbodies = config.nbodies;
     
-    struct cl_state *state = create_cl_state ();
+    struct cl_state *state = create_cl_state (config.delta);
 
     if (state == NULL) {
         fprintf (stderr, "Cannot initialize OpenCL state\n");
@@ -161,13 +161,18 @@ int main (int argc, char *argv[])
         i = 0;
     }
 
-    prepare_step (state, config.delta);
     signal (SIGINT, cleanup);
     signal (SIGTERM, cleanup);
 
     while (do_loop) {
         if (i % 100 == 0) printf ("%i\n", i);
         if (i % config.snapshot_steps == 0) save_snapshot (state, i);
+        if (i % config.check_energy == 0) {
+            float kin = kinetic_energy (state);
+            float pot = potential_energy (state);
+            printf ("Kinetic energy=%.5e, potential energy=%.5e, total energy=%.5e\n",
+                    kin, pot, kin+pot);
+        }
         take_step (state);
         i++;
     }

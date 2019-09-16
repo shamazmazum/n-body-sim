@@ -12,21 +12,32 @@ struct cl_state {
     cl_program program;
 
     cl_kernel step;
+    cl_kernel kinetic_energy;
+    cl_kernel potential_energy;
+    cl_kernel reduce1;
+    cl_kernel reduce2;
 
     size_t nbodies;
     cl_mem mass;
     cl_mem pos;
     cl_mem velocity;
+    cl_mem energy;
+    cl_float delta;
 
     size_t group_size;
 };
 
 void destroy_cl_state(struct cl_state *state)
 {
+    if (state->energy != NULL) clReleaseMemObject (state->energy);
     if (state->mass != NULL) clReleaseMemObject (state->mass);
     if (state->pos != NULL) clReleaseMemObject (state->pos);
     if (state->velocity != NULL) clReleaseMemObject (state->velocity);
     if (state->step != NULL) clReleaseKernel (state->step);
+    if (state->kinetic_energy != NULL) clReleaseKernel (state->kinetic_energy);
+    if (state->potential_energy != NULL) clReleaseKernel (state->potential_energy);
+    if (state->reduce1 != NULL) clReleaseKernel (state->reduce1);
+    if (state->reduce2 != NULL) clReleaseKernel (state->reduce2);
     if (state->program != NULL) clReleaseProgram (state->program);
     if (state->queue != NULL) clReleaseCommandQueue (state->queue);
     if (state->context != NULL) clReleaseContext (state->context);
@@ -34,7 +45,7 @@ void destroy_cl_state(struct cl_state *state)
     free (state);
 }
 
-struct cl_state* create_cl_state()
+struct cl_state* create_cl_state (cl_float delta)
 {
     cl_context_properties properties[3];
     cl_uint num_of_platforms=0;
@@ -72,6 +83,7 @@ struct cl_state* create_cl_state()
     state = malloc (sizeof(*state));
     memset (state, 0, sizeof(*state));
     state->group_size = group_size;
+    state->delta = delta;
 
     state->context = clCreateContext (properties, 1, &device_id, NULL, NULL, NULL);
     if (state->context == NULL) {
@@ -110,9 +122,33 @@ struct cl_state* create_cl_state()
         goto bad;
     }
 
-    state->step = clCreateKernel (state->program, "take_step_rk2", NULL);
+    state->step = clCreateKernel (state->program, "take_step_euler", NULL);
     if (state->step == NULL) {
-        fprintf (stderr, "Cannot create kernel\n");
+        fprintf (stderr, "Cannot create integrator kernel\n");
+        goto bad;
+    }
+
+    state->kinetic_energy = clCreateKernel (state->program, "kinetic_energy", NULL);
+    if (state->kinetic_energy == NULL) {
+        fprintf (stderr, "Cannot create kinetic energy kernel\n");
+        goto bad;
+    }
+
+    state->potential_energy = clCreateKernel (state->program, "potential_energy", NULL);
+    if (state->potential_energy == NULL) {
+        fprintf (stderr, "Cannot create potential energy kernel\n");
+        goto bad;
+    }
+
+    state->reduce1 = clCreateKernel (state->program, "reduce", NULL);
+    if (state->reduce1 == NULL) {
+        fprintf (stderr, "Cannot create reduction kernel\n");
+        goto bad;
+    }
+
+    state->reduce2 = clCreateKernel (state->program, "reduce", NULL);
+    if (state->reduce2 == NULL) {
+        fprintf (stderr, "Cannot create integrator kernel\n");
         goto bad;
     }
 
@@ -128,6 +164,10 @@ size_t initialize_memory (struct cl_state *state, size_t n)
     size_t rem = n % state->group_size;
     n -= rem;
     state->nbodies = n;
+
+    cl_ulong red2_size = state->group_size;
+    cl_ulong red1_size = n;
+
     state->mass = clCreateBuffer (state->context, CL_MEM_READ_ONLY, n*sizeof(cl_float), NULL, NULL);
     if (state->mass == NULL) return 0;
 
@@ -136,6 +176,34 @@ size_t initialize_memory (struct cl_state *state, size_t n)
 
     state->velocity = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float2), NULL, NULL);
     if (state->velocity == NULL) return 0;
+
+    state->energy = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float), NULL, NULL);
+    if (state->energy == NULL) return 0;
+
+    clSetKernelArg (state->step, 0, sizeof(cl_mem), &state->mass);
+    clSetKernelArg (state->step, 1, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->step, 2, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->step, 3, sizeof(cl_float), &state->delta);
+    clSetKernelArg (state->step, 4, sizeof(cl_float) * state->group_size, NULL);
+    clSetKernelArg (state->step, 5, sizeof(cl_float2) * state->group_size, NULL);
+
+    clSetKernelArg (state->kinetic_energy, 0, sizeof(cl_mem), &state->mass);
+    clSetKernelArg (state->kinetic_energy, 1, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->kinetic_energy, 2, sizeof(cl_mem), &state->energy);
+
+    clSetKernelArg (state->potential_energy, 0, sizeof(cl_mem), &state->mass);
+    clSetKernelArg (state->potential_energy, 1, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->potential_energy, 2, sizeof(cl_float) * state->group_size, NULL);
+    clSetKernelArg (state->potential_energy, 3, sizeof(cl_float2) * state->group_size, NULL);
+    clSetKernelArg (state->potential_energy, 4, sizeof(cl_mem), &state->energy);
+
+    clSetKernelArg (state->reduce1, 0, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->reduce1, 1, sizeof(float) * state->group_size, NULL);
+    clSetKernelArg (state->reduce1, 2, sizeof(cl_ulong), &red1_size);
+
+    clSetKernelArg (state->reduce2, 0, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->reduce2, 1, sizeof(float) * state->group_size, NULL);
+    clSetKernelArg (state->reduce2, 2, sizeof(cl_ulong), &red2_size);
 
     return n;
 }
@@ -181,16 +249,6 @@ void unmap_gpu_memory (struct cl_state *state, int which, void *ptr)
 
     clEnqueueUnmapMemObject (state->queue, buffer, ptr, 0, NULL, NULL);
     clFinish (state->queue);
-}
-
-void prepare_step (struct cl_state *state, cl_float delta)
-{
-    clSetKernelArg (state->step, 0, sizeof(cl_mem), &state->mass);
-    clSetKernelArg (state->step, 1, sizeof(cl_mem), &state->pos);
-    clSetKernelArg (state->step, 2, sizeof(cl_mem), &state->velocity);
-    clSetKernelArg (state->step, 3, sizeof(cl_float), &delta);
-    clSetKernelArg (state->step, 4, sizeof(cl_float) * state->group_size, NULL);
-    clSetKernelArg (state->step, 5, sizeof(cl_float2) * state->group_size, NULL);
 }
 
 void take_step (struct cl_state *state)
@@ -270,5 +328,41 @@ int restore_gpu_memory (struct cl_state *state, int which, const char *name)
 done:
     if (handle != NULL) fclose (handle);
     if (map != NULL) unmap_gpu_memory (state, which, map);
+    return res;
+}
+
+cl_float kinetic_energy (struct cl_state *state)
+{
+    size_t n = state->nbodies;
+    size_t nloc = state->group_size;
+    size_t reduce1n = nloc * nloc;
+    cl_float res;
+
+    clEnqueueNDRangeKernel (state->queue, state->kinetic_energy, 1, NULL, &n, NULL, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL, &reduce1n, &nloc, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL, &nloc, &nloc, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueReadBuffer (state->queue, state->energy, CL_TRUE, 0, sizeof (cl_float), &res, 0, NULL, NULL);
+
+    return res;
+}
+
+cl_float potential_energy (struct cl_state *state)
+{
+    size_t n = state->nbodies;
+    size_t nloc = state->group_size;
+    size_t reduce1n = nloc * nloc;
+    cl_float res;
+
+    clEnqueueNDRangeKernel (state->queue, state->potential_energy, 1, NULL, &n, &nloc, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL, &reduce1n, &nloc, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL, &nloc, &nloc, 0, NULL, NULL);
+    clFinish (state->queue);
+    clEnqueueReadBuffer (state->queue, state->energy, CL_TRUE, 0, sizeof (cl_float), &res, 0, NULL, NULL);
+
     return res;
 }

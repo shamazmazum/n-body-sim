@@ -15,6 +15,7 @@ struct config_parameters {
 
     size_t nbodies;
     unsigned int snapshot_steps;
+    unsigned int check_energy;
 };
 
 void parse_config (struct config_parameters *config, const char *name);
