@@ -10,8 +10,8 @@ float2 accel (float2 r_me, __local float *m, __local float2 *r)
 
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
-        float dist = length(dir) + EPS;
-        res += G*m[i]/pown(dist, 3) * dir;
+        float dist_sq = pown(dir.x, 2) + pown(dir.y, 2);
+        res += G*m[i]/powr(dist_sq + EPS, 3.0f/2) * dir;
     }
 
     return res;
@@ -112,9 +112,9 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
 
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
-        float dist = length(dir);
+        float dist_sq = pown(dir.x, 2) + pown(dir.y, 2);
         // KLUDGE
-        res += (dist != 0)? -G*m_me*m[i]/(dist + EPS): 0.0f;
+        res += (dist_sq != 0)? -G*m_me*m[i]/sqrt(dist_sq + EPS): 0.0f;
     }
 
     return res;
