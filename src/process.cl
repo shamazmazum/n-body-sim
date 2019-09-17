@@ -93,6 +93,58 @@ __kernel void take_step_rk2 (__constant float *m,
     v[glob_id] = v_me + (nv + mv) * delta / 2;
 }
 
+__kernel void take_step_rk4 (__constant float *m,
+                             __global float2 *r,
+                             __global float2 *v,
+                             float delta,
+                             __local float *loc_m,
+                             __local float2 *loc_r)
+{
+    size_t glob_id = get_global_id(0);
+
+    size_t i;
+    float2 r_me = r[glob_id];
+    float2 v_me = v[glob_id];
+    float2 vpred;
+    float2 rpred;
+
+    float2 mv = collect_accel (r_me, m, loc_m, r, loc_r);
+    float2 mr = v_me;
+
+    vpred = v_me + delta * mv / 2;
+    rpred = r_me + delta * mr / 2;
+
+    r[glob_id] = rpred;
+    v[glob_id] = vpred;
+    barrier (CLK_GLOBAL_MEM_FENCE);
+
+    float2 nv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 nr = vpred;
+
+    vpred = v_me + delta * nv / 2;
+    rpred = r_me + delta * nr / 2;
+
+    r[glob_id] = rpred;
+    v[glob_id] = vpred;
+    barrier (CLK_GLOBAL_MEM_FENCE);
+
+    float2 pv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 pr = vpred;
+
+    vpred = v_me + delta * pv;
+    rpred = r_me + delta * pr;
+
+    r[glob_id] = rpred;
+    v[glob_id] = vpred;
+    barrier (CLK_GLOBAL_MEM_FENCE);
+
+    float2 qv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 qr = vpred;
+
+    r[glob_id] = r_me + (mr + 2*nr + 2*pr + qr) * delta / 6;
+    v[glob_id] = v_me + (mv + 2*nv + 2*pv + qv) * delta / 6;
+}
+
 __kernel void kinetic_energy (__constant float *m,
                               __constant float2 *velocity,
                               __global float *out)

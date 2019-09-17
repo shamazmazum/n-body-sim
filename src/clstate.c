@@ -63,14 +63,13 @@ struct cl_state* create_cl_state (const char *solver, cl_float delta)
     cl_uint num_of_devices=0;
     struct cl_state *state = NULL;
     size_t group_size;
-    const char *solver_kernel;
+    char solver_kernel[31];
 
-    if (strcmp (solver, "rk2") == 0) solver_kernel = "take_step_rk2";
-    else if (strcmp (solver, "euler") == 0) solver_kernel = "take_step_euler";
-    else {
-        fprintf (stderr, "No such solver: %s\n", solver);
+    if (strlen (solver) > 30 - strlen ("take_step_")) {
+        fprintf (stderr, "Solver name is too long: %s\n", solver);
         goto bad;
     }
+    sprintf (solver_kernel, "take_step_%s", solver);
 
     // retreives a list of platforms available
     if (clGetPlatformIDs (1, &platform_id, &num_of_platforms)!= CL_SUCCESS) {
