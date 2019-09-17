@@ -170,8 +170,8 @@ int main (int argc, char *argv[])
         if (i % config.check_energy == 0) {
             cl_float kin = kinetic_energy (state);
             cl_float pot = potential_energy (state);
-            printf ("Kinetic energy=%.10e, potential energy=%.10e, total energy=%.10e\n",
-                    kin, pot, kin+pot);
+            printf ("Kinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, angular momentum=%.10e\n",
+                    kin, pot, kin+pot, angular_momentum (state));
         }
         take_step (state);
         i++;

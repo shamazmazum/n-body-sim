@@ -14,6 +14,30 @@
     }                                                           \
     } while (0)
 
+#define ReduceToScalarHelper(name) cl_float name (struct cl_state *state) \
+    {                                                                   \
+        size_t n = state->nbodies;                                      \
+        size_t nloc = state->group_size;                                \
+        size_t reduce1n = nloc * nloc;                                  \
+        cl_float res;                                                   \
+                                                                        \
+        clEnqueueNDRangeKernel (state->queue, state->name, 1, NULL,     \
+                                &n, &nloc, 0, NULL, NULL);              \
+        clFinish (state->queue);                                        \
+        clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL,  \
+                                &reduce1n, &nloc, 0, NULL, NULL);       \
+        clFinish (state->queue);                                        \
+        clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL,  \
+                                &nloc, &nloc, 0, NULL, NULL);           \
+        clFinish (state->queue);                                        \
+        clEnqueueReadBuffer (state->queue, state->tmp_scalar,           \
+                             CL_TRUE, 0, sizeof (cl_float), &res, 0,    \
+                             NULL, NULL);                               \
+                                                                        \
+        return res;                                                     \
+    }
+
+
 struct cl_state {
     cl_context context;
     cl_command_queue queue;
@@ -22,6 +46,7 @@ struct cl_state {
     cl_kernel step;
     cl_kernel kinetic_energy;
     cl_kernel potential_energy;
+    cl_kernel angular_momentum;
     cl_kernel reduce1;
     cl_kernel reduce2;
 
@@ -29,7 +54,7 @@ struct cl_state {
     cl_mem mass;
     cl_mem pos;
     cl_mem velocity;
-    cl_mem energy;
+    cl_mem tmp_scalar;
     cl_float delta;
 
     size_t group_size;
@@ -38,13 +63,14 @@ struct cl_state {
 void destroy_cl_state(struct cl_state *state)
 {
     if (state == NULL) return;
-    if (state->energy != NULL) clReleaseMemObject (state->energy);
+    if (state->tmp_scalar != NULL) clReleaseMemObject (state->tmp_scalar);
     if (state->mass != NULL) clReleaseMemObject (state->mass);
     if (state->pos != NULL) clReleaseMemObject (state->pos);
     if (state->velocity != NULL) clReleaseMemObject (state->velocity);
     if (state->step != NULL) clReleaseKernel (state->step);
     if (state->kinetic_energy != NULL) clReleaseKernel (state->kinetic_energy);
     if (state->potential_energy != NULL) clReleaseKernel (state->potential_energy);
+    if (state->angular_momentum != NULL) clReleaseKernel (state->angular_momentum);
     if (state->reduce1 != NULL) clReleaseKernel (state->reduce1);
     if (state->reduce2 != NULL) clReleaseKernel (state->reduce2);
     if (state->program != NULL) clReleaseProgram (state->program);
@@ -141,6 +167,7 @@ struct cl_state* create_cl_state (const char *solver, cl_float delta)
     KernelHelper (state->step, solver_kernel);
     KernelHelper (state->kinetic_energy, "kinetic_energy");
     KernelHelper (state->potential_energy, "potential_energy");
+    KernelHelper (state->angular_momentum, "angular_momentum");
     KernelHelper (state->reduce1, "reduce");
     KernelHelper (state->reduce2, "reduce");
 
@@ -169,8 +196,8 @@ size_t initialize_memory (struct cl_state *state, size_t n)
     state->velocity = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float2), NULL, NULL);
     if (state->velocity == NULL) return 0;
 
-    state->energy = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float), NULL, NULL);
-    if (state->energy == NULL) return 0;
+    state->tmp_scalar = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float), NULL, NULL);
+    if (state->tmp_scalar == NULL) return 0;
 
     clSetKernelArg (state->step, 0, sizeof(cl_mem), &state->mass);
     clSetKernelArg (state->step, 1, sizeof(cl_mem), &state->pos);
@@ -181,19 +208,24 @@ size_t initialize_memory (struct cl_state *state, size_t n)
 
     clSetKernelArg (state->kinetic_energy, 0, sizeof(cl_mem), &state->mass);
     clSetKernelArg (state->kinetic_energy, 1, sizeof(cl_mem), &state->velocity);
-    clSetKernelArg (state->kinetic_energy, 2, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->kinetic_energy, 2, sizeof(cl_mem), &state->tmp_scalar);
 
     clSetKernelArg (state->potential_energy, 0, sizeof(cl_mem), &state->mass);
     clSetKernelArg (state->potential_energy, 1, sizeof(cl_mem), &state->pos);
     clSetKernelArg (state->potential_energy, 2, sizeof(cl_float) * state->group_size, NULL);
     clSetKernelArg (state->potential_energy, 3, sizeof(cl_float2) * state->group_size, NULL);
-    clSetKernelArg (state->potential_energy, 4, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->potential_energy, 4, sizeof(cl_mem), &state->tmp_scalar);
 
-    clSetKernelArg (state->reduce1, 0, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->angular_momentum, 0, sizeof(cl_mem), &state->mass);
+    clSetKernelArg (state->angular_momentum, 1, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->angular_momentum, 2, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->angular_momentum, 3, sizeof(cl_mem), &state->tmp_scalar);
+
+    clSetKernelArg (state->reduce1, 0, sizeof(cl_mem), &state->tmp_scalar);
     clSetKernelArg (state->reduce1, 1, sizeof(cl_float) * state->group_size, NULL);
     clSetKernelArg (state->reduce1, 2, sizeof(cl_ulong), &red1_size);
 
-    clSetKernelArg (state->reduce2, 0, sizeof(cl_mem), &state->energy);
+    clSetKernelArg (state->reduce2, 0, sizeof(cl_mem), &state->tmp_scalar);
     clSetKernelArg (state->reduce2, 1, sizeof(cl_float) * state->group_size, NULL);
     clSetKernelArg (state->reduce2, 2, sizeof(cl_ulong), &red2_size);
 
@@ -323,38 +355,6 @@ done:
     return res;
 }
 
-cl_float kinetic_energy (struct cl_state *state)
-{
-    size_t n = state->nbodies;
-    size_t nloc = state->group_size;
-    size_t reduce1n = nloc * nloc;
-    cl_float res;
-
-    clEnqueueNDRangeKernel (state->queue, state->kinetic_energy, 1, NULL, &n, NULL, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL, &reduce1n, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL, &nloc, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueReadBuffer (state->queue, state->energy, CL_TRUE, 0, sizeof (cl_float), &res, 0, NULL, NULL);
-
-    return res;
-}
-
-cl_float potential_energy (struct cl_state *state)
-{
-    size_t n = state->nbodies;
-    size_t nloc = state->group_size;
-    size_t reduce1n = nloc * nloc;
-    cl_float res;
-
-    clEnqueueNDRangeKernel (state->queue, state->potential_energy, 1, NULL, &n, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL, &reduce1n, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL, &nloc, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
-    clEnqueueReadBuffer (state->queue, state->energy, CL_TRUE, 0, sizeof (cl_float), &res, 0, NULL, NULL);
-
-    return res;
-}
+ReduceToScalarHelper (kinetic_energy)
+ReduceToScalarHelper (potential_energy)
+ReduceToScalarHelper (angular_momentum)

@@ -155,6 +155,18 @@ __kernel void kinetic_energy (__constant float *m,
     out[idx] = m[idx] * pown(norm, 2) / 2;
 }
 
+__kernel void angular_momentum (__constant float *m,
+                                __constant float2 *position,
+                                __constant float2 *velocity,
+                                __global float *out)
+{
+    size_t idx = get_global_id(0);
+    float2 r = position[idx];
+    float2 v = velocity[idx];
+
+    out[idx] = m[idx] * (r.x * v.y - r.y * v.x);
+}
+
 float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
 {
     size_t grp_size = get_local_size(0);

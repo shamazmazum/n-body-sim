@@ -17,6 +17,7 @@ void unmap_gpu_memory (struct cl_state *state, int which, void *ptr);
 void take_step (struct cl_state *state);
 cl_float kinetic_energy (struct cl_state *state);
 cl_float potential_energy (struct cl_state *state);
+cl_float angular_momentum (struct cl_state *state);
 int save_gpu_memory (struct cl_state *state, int which, const char *name);
 int restore_gpu_memory (struct cl_state *state, int which, const char *name);
 
