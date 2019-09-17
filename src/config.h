@@ -18,6 +18,7 @@ struct config_parameters {
     unsigned int snapshot_steps;
     unsigned int check_energy;
     const char *solver;
+    const char *prefix;
 };
 
 void parse_config (struct config_parameters *config, const char *name);

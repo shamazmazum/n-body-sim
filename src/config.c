@@ -18,7 +18,8 @@ static struct config_parameters conf_default = {
     .nbodies = 15360,
     .snapshot_steps = 1000,
     .check_energy = 2000,
-    .solver = "rk2"
+    .solver = "rk2",
+    .prefix = "out"
 };
 
 static unsigned int iniparser_getuint (dictionary *dict, const char *name, unsigned int def)
@@ -53,6 +54,7 @@ void parse_config (struct config_parameters *config, const char *name)
     config->snapshot_steps = iniparser_getuint (dict, "general:snapshot_steps", config->snapshot_steps);
     config->check_energy = iniparser_getuint (dict, "general:check_energy", config->check_energy);
     config->solver = iniparser_getstring (dict, "general:solver", config->solver);
+    config->prefix = iniparser_getstring (dict, "general:output_prefix", config->prefix);
 
     iniparser_freedict (dict);
 }
@@ -69,5 +71,6 @@ void print_config (const struct config_parameters *config)
     printf ("delta=%f\n", config->delta);
     printf ("nbodies=%lu\n", config->nbodies);
     printf ("snapshot every %u steps\n", config->snapshot_steps);
+    printf ("solver: %s\n", config->solver);
     
 }

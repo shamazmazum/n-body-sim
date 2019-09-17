@@ -24,14 +24,14 @@ static void cleanup (int sig)
     do_loop = 0;
 }
 
-static void save_snapshot (struct cl_state *state, unsigned int postfix)
+static void save_snapshot (struct cl_state *state, const char *prefix, unsigned int postfix)
 {
     char filename[MAXPATHLEN];
-    sprintf (filename, "%06i", postfix);
+    sprintf (filename, "%s%06i", prefix, postfix);
     save_gpu_memory (state, MAP_POSITION, filename);
 }
 
-static unsigned int find_starting_num (unsigned int step)
+static unsigned int find_starting_num (const char *prefix, unsigned int step)
 {
     unsigned int i = 0;
     char path[MAXPATHLEN];
@@ -39,7 +39,7 @@ static unsigned int find_starting_num (unsigned int step)
     int res;
 
     while (1) {
-        snprintf (path, MAXPATHLEN, "%06i", i);
+        snprintf (path, MAXPATHLEN, "%s%06i", prefix, i);
         res = stat (path, &s);
         if (res != 0) break;
         i += step;
@@ -133,7 +133,7 @@ int main (int argc, char *argv[])
             goto done;
         }
 
-        i = find_starting_num (config.snapshot_steps);
+        i = find_starting_num (config.prefix, config.snapshot_steps);
     } else {
         clear_rng_state();
         cl_float *mass = map_gpu_memory (state, MAP_MASS, CL_MAP_WRITE);
@@ -166,7 +166,7 @@ int main (int argc, char *argv[])
 
     while (do_loop) {
         if (i % 100 == 0) printf ("%i\n", i);
-        if (i % config.snapshot_steps == 0) save_snapshot (state, i);
+        if (i % config.snapshot_steps == 0) save_snapshot (state, config.prefix, i);
         if (i % config.check_energy == 0) {
             cl_float kin = kinetic_energy (state);
             cl_float pot = potential_energy (state);
