@@ -1,17 +1,18 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
+#include <CL/cl.h>
 
 struct config_parameters {
-    float mass_mean;
-    float mass_std;
+    cl_float mass_mean;
+    cl_float mass_std;
 
-    float velocity_norm_mean;
-    float velocity_norm_std;
+    cl_float velocity_norm_mean;
+    cl_float velocity_norm_std;
 
-    float position_norm_mean;
-    float position_norm_std;
+    cl_float position_norm_mean;
+    cl_float position_norm_std;
 
-    float delta;
+    cl_float delta;
 
     size_t nbodies;
     unsigned int snapshot_steps;

@@ -191,11 +191,11 @@ size_t initialize_memory (struct cl_state *state, size_t n)
     clSetKernelArg (state->potential_energy, 4, sizeof(cl_mem), &state->energy);
 
     clSetKernelArg (state->reduce1, 0, sizeof(cl_mem), &state->energy);
-    clSetKernelArg (state->reduce1, 1, sizeof(float) * state->group_size, NULL);
+    clSetKernelArg (state->reduce1, 1, sizeof(cl_float) * state->group_size, NULL);
     clSetKernelArg (state->reduce1, 2, sizeof(cl_ulong), &red1_size);
 
     clSetKernelArg (state->reduce2, 0, sizeof(cl_mem), &state->energy);
-    clSetKernelArg (state->reduce2, 1, sizeof(float) * state->group_size, NULL);
+    clSetKernelArg (state->reduce2, 1, sizeof(cl_float) * state->group_size, NULL);
     clSetKernelArg (state->reduce2, 2, sizeof(cl_ulong), &red2_size);
 
     return n;

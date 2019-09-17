@@ -168,8 +168,8 @@ int main (int argc, char *argv[])
         if (i % 100 == 0) printf ("%i\n", i);
         if (i % config.snapshot_steps == 0) save_snapshot (state, i);
         if (i % config.check_energy == 0) {
-            float kin = kinetic_energy (state);
-            float pot = potential_energy (state);
+            cl_float kin = kinetic_energy (state);
+            cl_float pot = potential_energy (state);
             printf ("Kinetic energy=%.5e, potential energy=%.5e, total energy=%.5e\n",
                     kin, pot, kin+pot);
         }
