@@ -44,3 +44,25 @@ set output "$1.png"
 plot "$1" with dots
 EOF
 ```
+
+Installation
+-----------
+You need these dependencies installed:
+*  OpenCL
+*  [Iniparser](https://github.com/ndevilla/iniparser) (present in FreeBSD ports as devel/iniparser)
+*  [program-map](https://github.com/shamazmazum/program-map) (a small helper for loading OpenCL programs)
+* Cmake for building
+
+The building procedure is following:
+```
+mkdir build
+cd build
+cmake ..
+make
+make install
+```
+
+Problems
+--------
+* Total energy varies greatly during computation.
+* When initial speed is zero, angular momentum is not constant. However it is almost constant otherwise.
