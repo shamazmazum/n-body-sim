@@ -165,17 +165,22 @@ int main (int argc, char *argv[])
     signal (SIGTERM, cleanup);
 
     while (do_loop) {
-        if (i % 100 == 0) printf ("%i\n", i);
         if (i % config.snapshot_steps == 0) save_snapshot (state, config.prefix, i);
         if (i % config.check_energy == 0) {
             cl_float kin = kinetic_energy (state);
             cl_float pot = potential_energy (state);
-            printf ("Kinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, angular momentum=%.10e\n",
+            printf ("\nKinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, angular momentum=%.10e\n",
                     kin, pot, kin+pot, angular_momentum (state));
         }
+        if (i % 100 == 0) {
+            printf ("%i... ", i);
+            fflush (stdout);
+        }
+
         take_step (state);
         i++;
     }
+    printf ("\n");
 
     if (save) {
         res = save_state (state);
