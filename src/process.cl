@@ -177,8 +177,7 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
         float dist_sq = pown(dir.x, 2) + pown(dir.y, 2);
-        // KLUDGE
-        res += (dist_sq != 0)? -G*m_me*m[i]/sqrt(dist_sq + EPS): 0.0f;
+        res += -G*m_me*m[i]/sqrt(dist_sq + EPS);
     }
 
     return res;
@@ -210,6 +209,8 @@ __kernel void potential_energy (__constant float *m,
         barrier (CLK_LOCAL_MEM_FENCE);
     }
 
+    // Compensation for one-with-itself interaction
+    res += G*pown(m_me, 2)/sqrt(EPS);
     out[glob_id] = res;
 }
 
