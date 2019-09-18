@@ -64,5 +64,4 @@ make install
 
 Problems
 --------
-* Total energy varies greatly during computation.
 * When initial speed is zero, angular momentum is not constant. However it is almost constant otherwise.

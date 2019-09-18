@@ -183,6 +183,13 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
     return res;
 }
 
+/*
+ * This function does more than twice the amount of computations than
+ * needed, because, given the bodies i and j, it computes interaction
+ * between pairs ii, jj, ij and ji while we need only ij or
+ * ji. Because this function is not called often, I leave it as it
+ * is.
+ */
 __kernel void potential_energy (__constant float *m,
                                 __constant float2 *r,
                                 __local float *loc_m,
@@ -209,9 +216,7 @@ __kernel void potential_energy (__constant float *m,
         barrier (CLK_LOCAL_MEM_FENCE);
     }
 
-    // Compensation for one-with-itself interaction
-    res += G*pown(m_me, 2)/sqrt(EPS);
-    out[glob_id] = res;
+    out[glob_id] = (res + G*pown(m_me, 2)/sqrt(EPS))/ 2;
 }
 
 __kernel void reduce (__global float *array,
