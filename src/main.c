@@ -1,15 +1,14 @@
 #include <sys/param.h>
 #include <sys/stat.h>
-#include <unistd.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <signal.h>
 #include <errno.h>
-#include "rng.h"
+#include <assert.h>
 #include "clstate.h"
-#include "config.h"
 
 #define CHECK_MAP(ptr) do {                             \
         if ((ptr) == NULL) {                            \
@@ -24,10 +23,58 @@ static void cleanup (int sig)
     do_loop = 0;
 }
 
-static void save_snapshot (struct cl_state *state, const char *prefix, unsigned int postfix)
+static struct config_parameters {
+    size_t nbodies;
+    unsigned int output_steps;
+    unsigned int invariant_steps;
+    cl_float delta;
+    int no_update;
+
+    const char *solver;
+    const char *out_prefix;
+
+    const char *state_position;
+    const char *state_velocity;
+    const char *state_mass;
+} config = {
+    .nbodies = 0,
+    .output_steps = 100,
+    .invariant_steps = 5000,
+    .delta = 0.00001,
+    .no_update = 0,
+
+    .solver = "rk2",
+    .out_prefix = "out"
+};
+
+enum {
+    SET_OUTPUT_PREFIX = 1000,
+    SET_NO_UPDATE
+};
+const struct option long_opts[] = {
+    {"output-steps",    required_argument, NULL, 'o'},
+    {"invariant-steps", required_argument, NULL, 'i'},
+    {"output-prefix",   required_argument, NULL, SET_OUTPUT_PREFIX},
+    {"no-update",       no_argument,       NULL, SET_NO_UPDATE},
+    {NULL, 0, NULL, 0}
+};
+
+static void print_config (const struct config_parameters *config)
+{
+    printf ("Config parameters:\n");
+    printf ("nbodies=%lu\n", config->nbodies);
+    printf ("output steps=%u, invariant_steps=%u\n",
+            config->output_steps,
+            config->invariant_steps);
+    printf ("delta=%f\n", config->delta);
+    printf ("solver=%s\n", config->solver);
+}
+
+static void save_position (struct cl_state *state, const char *prefix, unsigned int n)
 {
     char filename[MAXPATHLEN];
-    sprintf (filename, "%s%06i", prefix, postfix);
+    assert (prefix != NULL);
+    snprintf (filename, MAXPATHLEN, "%s%06i", prefix, n);
     save_gpu_memory (state, MAP_POSITION, filename);
 }
 
@@ -38,6 +85,7 @@ static unsigned int find_starting_num (const char *prefix, unsigned int step)
     struct stat s;
     int res;
 
+    assert (prefix != NULL);
     while (1) {
         snprintf (path, MAXPATHLEN, "%s%06i", prefix, i);
         res = stat (path, &s);
@@ -49,67 +97,106 @@ static unsigned int find_starting_num (const char *prefix, unsigned int step)
     return i;
 }
 
-static int restore_state (struct cl_state *state)
+static int load_state (struct cl_state *state, const struct config_parameters *config)
 {
     int res;
 
-    res = restore_gpu_memory (state, MAP_POSITION, "state_position");
+    assert (config->state_position != NULL &&
+            config->state_velocity != NULL &&
+            config->state_mass != NULL);
+    res = restore_gpu_memory (state, MAP_POSITION, config->state_position);
     if (!res) return 0;
 
-    res = restore_gpu_memory (state, MAP_VELOCITY, "state_velocity");
+    res = restore_gpu_memory (state, MAP_VELOCITY, config->state_velocity);
     if (!res) return 0;
 
-    res = restore_gpu_memory (state, MAP_MASS, "state_mass");
+    res = restore_gpu_memory (state, MAP_MASS, config->state_mass);
     if (!res) return 0;
 
     return 1;
 }
 
-static int save_state (struct cl_state *state)
+static int save_state (struct cl_state *state, const struct config_parameters *config)
 {
     size_t i;
     int res;
 
-    res = save_gpu_memory (state, MAP_MASS, "state_mass");
+    assert (config->state_position != NULL &&
+            config->state_velocity != NULL);
+
+    res = save_gpu_memory (state, MAP_POSITION, config->state_position);
     if (!res) return 0;
 
-    res = save_gpu_memory (state, MAP_POSITION, "state_position");
-    if (!res) return 0;
-
-    res = save_gpu_memory (state, MAP_VELOCITY, "state_velocity");
+    res = save_gpu_memory (state, MAP_VELOCITY, config->state_velocity);
     if (!res) return 0;
 
     return 1;
 }
 
+static void usage()
+{
+    fprintf (stderr,
+             "n-body-sim -n nbodies [-o|--output-steps steps]\n"
+             "[-i|--invariant-steps steps] [--output-prefix prefix]\n"
+             "[-d delta] [-s solver] [--no-update] position velocity mass\n");
+    exit(1);
+}
+
+#define parse_unsigned(str, place) do {             \
+        long val;                                   \
+        char *endptr;                               \
+        val = strtol (str, &endptr, 10);            \
+        if (*endptr != '\0' || val < 0) usage();    \
+        place = val;                                \
+    } while(0)
+
+#define parse_float(str, place) do {             \
+        double val;                              \
+        char *endptr;                            \
+        val = strtod (str, &endptr);             \
+        if (*endptr != '\0' || val < 0) usage(); \
+        place = val;                             \
+    } while(0)
+
 int main (int argc, char *argv[])
 {
     unsigned int i;
-    int res;
-    char ch;
-    char *config_name = NULL;
-    int restore = 0;
-    int save = 0;
+    int opt;
 
-    while ((ch = getopt (argc, argv, "srf:")) != -1) {
-        switch (ch) {
-        case 'f':
-            config_name = optarg;
+    while ((opt = getopt_long (argc, argv, "n:d:s:o:i:", long_opts, NULL)) != -1) {
+        switch (opt) {
+        case 'n':
+            parse_unsigned (optarg, config.nbodies);
+            break;
+        case 'o':
+            parse_unsigned (optarg, config.output_steps);
+            break;
+        case 'i':
+            parse_unsigned (optarg, config.invariant_steps);
+            break;
+        case 'd':
+            parse_float (optarg, config.delta);
             break;
         case 's':
-            save = 1;
+            config.solver = optarg;
             break;
-        case 'r':
-            restore = 1;
+        case SET_OUTPUT_PREFIX:
+            config.out_prefix = optarg;
+            break;
+        case SET_NO_UPDATE:
+            config.no_update = 1;
             break;
         }
     }
 
     argc -= optind;
     argv += optind;
+    if (argc != 3 || config.nbodies == 0) usage();
 
-    struct config_parameters config;
-    parse_config (&config, config_name);
+    config.state_position = argv[0];
+    config.state_velocity = argv[1];
+    config.state_mass = argv[2];
+
     print_config (&config);
     size_t nbodies = config.nbodies;
     
@@ -126,47 +213,19 @@ int main (int argc, char *argv[])
         goto done;
     }
 
-    if (restore) {
-        res = restore_state (state);
-        if (!res) {
-            fprintf (stderr, "Cannot restore state, exiting\n");
-            goto done;
-        }
-
-        i = find_starting_num (config.prefix, config.snapshot_steps);
-    } else {
-        clear_rng_state();
-        cl_float *mass = map_gpu_memory (state, MAP_MASS, CL_MAP_WRITE);
-        CHECK_MAP (mass);
-        for (i=0; i<nbodies; i++) {
-            mass[i] = fmaxf (0, normal (config.mass_mean, config.mass_std));
-        }
-        unmap_gpu_memory (state, MAP_MASS, mass);
-
-        clear_rng_state();
-        cl_float2 *velocity = map_gpu_memory (state, MAP_VELOCITY, CL_MAP_WRITE);
-        CHECK_MAP (velocity);
-        for (i=0; i<nbodies; i++) {
-            velocity[i] = normal2 (config.velocity_norm_mean, config.velocity_norm_std);
-        }
-        unmap_gpu_memory (state, MAP_VELOCITY, velocity);
-
-        clear_rng_state();
-        cl_float2 *position = map_gpu_memory (state, MAP_POSITION, CL_MAP_WRITE);
-        CHECK_MAP (position);
-        for (i=0; i<nbodies; i++)
-            position[i] = normal2 (config.position_norm_mean, config.position_norm_std);
-        unmap_gpu_memory (state, MAP_POSITION, position);
-
-        i = 0;
+    if (!load_state (state, &config)) {
+        fprintf (stderr, "Cannot load state, exiting\n");
+        goto done;
     }
+
+    i = find_starting_num (config.out_prefix, config.output_steps);
 
     signal (SIGINT, cleanup);
     signal (SIGTERM, cleanup);
 
     while (do_loop) {
-        if (i % config.snapshot_steps == 0) save_snapshot (state, config.prefix, i);
-        if (i % config.check_energy == 0) {
+        if (i % config.output_steps == 0) save_position (state, config.out_prefix, i);
+        if (i % config.invariant_steps == 0) {
             cl_float kin = kinetic_energy (state);
             cl_float pot = potential_energy (state);
             printf ("\nKinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, angular momentum=%.10e\n",
@@ -182,9 +241,9 @@ int main (int argc, char *argv[])
     }
     printf ("\n");
 
-    if (save) {
-        res = save_state (state);
-        if (!res) fprintf (stderr, "Cannot save state\n");
+    if (!config.no_update) {
+        if (!save_state (state, &config))
+            fprintf (stderr, "Cannot save state\n");
     }
 
 done:
