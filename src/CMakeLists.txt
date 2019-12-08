@@ -4,6 +4,7 @@ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/program_loc.h.in ${CMAKE_CURRENT_BIN
 include_directories (${CMAKE_CURRENT_BINARY_DIR} ${PROGRAM_MAP_INCLUDE_DIR} ${OpenCL_INCLUDE_DIRS})
 
 add_executable (n-body-sim clstate.c main.c)
+target_compile_options (n-body-sim PRIVATE -Wall -Wextra -Wno-unused-parameter)
 target_link_libraries (n-body-sim ${OpenCL_LIBRARIES} ${PROGRAM_MAP_LIBRARY} m)
 
 install (TARGETS n-body-sim RUNTIME

@@ -118,7 +118,6 @@ static int load_state (struct cl_state *state, const struct config_parameters *c
 
 static int save_state (struct cl_state *state, const struct config_parameters *config)
 {
-    size_t i;
     int res;
 
     assert (config->state_position != NULL &&
