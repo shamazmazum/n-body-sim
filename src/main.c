@@ -32,31 +32,35 @@ static struct config_parameters {
 
     const char *solver;
     const char *out_prefix;
+    const char *energy_file;
 
     const char *state_position;
     const char *state_velocity;
     const char *state_mass;
 } config = {
-    .nbodies = 0,
-    .output_steps = 100,
+    .nbodies         = 0,
+    .output_steps    = 100,
     .invariant_steps = 5000,
-    .delta = 0.00001,
-    .no_update = 0,
+    .delta           = 0.00001,
+    .no_update       = 0,
 
-    .solver = "rk2",
-    .out_prefix = "out"
+    .solver      = "rk2",
+    .out_prefix  = "out",
+    .energy_file = NULL
 };
 
 enum {
     SET_OUTPUT_PREFIX = 1000,
-    SET_NO_UPDATE
+    SET_NO_UPDATE,
+    SET_ENERGY_OUT
 };
 const struct option long_opts[] = {
-    {"output-steps",    required_argument, NULL, 'o'},
-    {"invariant-steps", required_argument, NULL, 'i'},
-    {"output-prefix",   required_argument, NULL, SET_OUTPUT_PREFIX},
-    {"no-update",       no_argument,       NULL, SET_NO_UPDATE},
-    {NULL, 0, NULL, 0}
+    { "output-steps",    required_argument, NULL,               'o' },
+    { "invariant-steps", required_argument, NULL,               'i' },
+    { "output-prefix",   required_argument, NULL, SET_OUTPUT_PREFIX },
+    { "no-update",       no_argument,       NULL, SET_NO_UPDATE     },
+    { "output-energy",   required_argument, NULL, SET_ENERGY_OUT    },
+    {NULL,                               0, NULL,                0  }
 };
 
 static void print_config (const struct config_parameters *config)
@@ -68,6 +72,10 @@ static void print_config (const struct config_parameters *config)
             config->invariant_steps);
     printf ("delta=%f\n", config->delta);
     printf ("solver=%s\n", config->solver);
+
+    if (config->energy_file) {
+        printf ("Output energy to %s\n", config->energy_file);
+    }
 }
 
 static void save_position (struct cl_state *state, const char *prefix, unsigned int n)
@@ -137,7 +145,8 @@ static void usage()
     fprintf (stderr,
              "n-body-sim -n nbodies [-o|--output-steps steps]\n"
              "[-i|--invariant-steps steps] [--output-prefix prefix]\n"
-             "[-d delta] [-s solver] [--no-update] position velocity mass\n");
+             "[-d delta] [-s solver] [--output-energy out] [--no-update]\n"
+             "position velocity mass\n");
     exit(1);
 }
 
@@ -161,6 +170,8 @@ int main (int argc, char *argv[])
 {
     unsigned int i;
     int opt;
+    FILE *energy_out = NULL;
+    struct cl_state *state = NULL;
 
     while ((opt = getopt_long (argc, argv, "n:d:s:o:i:", long_opts, NULL)) != -1) {
         switch (opt) {
@@ -185,6 +196,8 @@ int main (int argc, char *argv[])
         case SET_NO_UPDATE:
             config.no_update = 1;
             break;
+        case SET_ENERGY_OUT:
+            config.energy_file = optarg;
         }
     }
 
@@ -194,16 +207,23 @@ int main (int argc, char *argv[])
 
     config.state_position = argv[0];
     config.state_velocity = argv[1];
-    config.state_mass = argv[2];
+    config.state_mass     = argv[2];
 
     print_config (&config);
     size_t nbodies = config.nbodies;
-    
-    struct cl_state *state = create_cl_state (config.solver, config.delta);
 
+    if (config.energy_file != NULL) {
+        energy_out = fopen (config.energy_file, "w");
+        if (energy_out == NULL) {
+            perror ("Cannot open file for energy output");
+            goto done;
+        }
+    }
+
+    state = create_cl_state (config.solver, config.delta);
     if (state == NULL) {
         fprintf (stderr, "Cannot initialize OpenCL state\n");
-        return 1;
+        goto done;
     }
 
     nbodies = initialize_memory (state, nbodies);
@@ -227,8 +247,13 @@ int main (int argc, char *argv[])
         if (i % config.invariant_steps == 0) {
             cl_float kin = kinetic_energy (state);
             cl_float pot = potential_energy (state);
-            printf ("\nKinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, angular momentum=%.10e\n",
+            printf ("\nKinetic energy=%.10e, potential energy=%.10e, total energy=%.10e, "
+                    "angular momentum=%.10e\n",
                     kin, pot, kin+pot, angular_momentum (state));
+            if (energy_out != NULL) {
+                fprintf (energy_out, "%.10e %.10e %.10e\n",
+                         kin, pot, kin+pot);
+            }
         }
         if (i % 100 == 0) {
             printf ("%i... ", i);
@@ -246,6 +271,13 @@ int main (int argc, char *argv[])
     }
 
 done:
-    destroy_cl_state (state);
+    if (state != NULL) {
+        destroy_cl_state (state);
+    }
+
+    if (energy_out != NULL) {
+        fclose (energy_out);
+    }
+
     return 0;
 }
