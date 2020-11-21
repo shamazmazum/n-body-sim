@@ -1,7 +1,6 @@
 N-Body-Sim
 =========
-
-[![Build Status](https://travis-ci.com/shamazmazum/n-body-sim.svg?branch=master)](https://travis-ci.com/shamazmazum/n-body-sim)
+[![Build Status](https://api.cirrus-ci.com/github/shamazmazum/n-body-sim.svg)](https://cirrus-ci.com/github/shamazmazum/n-body-sim)
 
 **n-body-sim** is a simple program which simulates the movement of N
 bodies under the influence of their gravitational forces in two
