@@ -7,7 +7,7 @@ task:
       - COMPILER: clang10
       - COMPILER: gcc9
   preinstall_script:
-    - pkg install -y gcc9 llvm10 cmake ocl-icd opencl
+    - pkg install -y git gcc9 llvm10 cmake ocl-icd opencl
   install_script:
     - git clone --depth=1 git://github.com/shamazmazum/program-map.git program-map
     - mkdir program-map/build && cd program-map/build
