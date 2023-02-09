@@ -1,13 +1,13 @@
 freebsd_instance:
-  image_family: freebsd-13-0-snap
+  image_family: freebsd-13-1
 
 task:
   env:
     matrix:
-      - COMPILER: clang10
-      - COMPILER: gcc9
+      - COMPILER: clang15
+      - COMPILER: gcc12
   preinstall_script:
-    - pkg install -y git gcc9 llvm10 cmake ocl-icd opencl
+    - pkg install -y git gcc12 llvm15 cmake ocl-icd opencl
   install_script:
     - git clone --depth=1 git://github.com/shamazmazum/program-map.git program-map
     - mkdir program-map/build && cd program-map/build
