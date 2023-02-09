@@ -9,7 +9,7 @@ task:
   preinstall_script:
     - pkg install -y git gcc12 llvm15 cmake ocl-icd opencl
   install_script:
-    - git clone --depth=1 git://github.com/shamazmazum/program-map.git program-map
+    - git clone --depth=1 https://github.com/shamazmazum/program-map.git program-map
     - mkdir program-map/build && cd program-map/build
     - cmake .. && make && make install
   config_script:
