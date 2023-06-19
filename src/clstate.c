@@ -133,7 +133,7 @@ struct cl_state* create_cl_state (const char *solver, cl_float delta)
         goto bad;
     }
 
-    state->queue = clCreateCommandQueue (state->context, device_id, 0, NULL);
+    state->queue = clCreateCommandQueueWithProperties (state->context, device_id, NULL, NULL);
     if (state->queue == NULL) {
         fprintf (stderr, "Cannot create command queue\n");
         goto bad;
@@ -212,9 +212,9 @@ size_t initialize_memory (struct cl_state *state, size_t n)
 
     clSetKernelArg (state->potential_energy, 0, sizeof(cl_mem), &state->mass);
     clSetKernelArg (state->potential_energy, 1, sizeof(cl_mem), &state->pos);
-    clSetKernelArg (state->potential_energy, 2, sizeof(cl_float) * state->group_size, NULL);
-    clSetKernelArg (state->potential_energy, 3, sizeof(cl_float2) * state->group_size, NULL);
-    clSetKernelArg (state->potential_energy, 4, sizeof(cl_mem), &state->tmp_scalar);
+    clSetKernelArg (state->potential_energy, 2, sizeof(cl_mem), &state->tmp_scalar);
+    clSetKernelArg (state->potential_energy, 3, sizeof(cl_float) * state->group_size, NULL);
+    clSetKernelArg (state->potential_energy, 4, sizeof(cl_float2) * state->group_size, NULL);
 
     clSetKernelArg (state->angular_momentum, 0, sizeof(cl_mem), &state->mass);
     clSetKernelArg (state->angular_momentum, 1, sizeof(cl_mem), &state->pos);

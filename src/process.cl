@@ -192,9 +192,9 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
  */
 __kernel void potential_energy (__constant float *m,
                                 __constant float2 *r,
+                                __global float *out,
                                 __local float *loc_m,
-                                __local float2 *loc_r,
-                                __global float *out)
+                                __local float2 *loc_r)
 {
     size_t num_groups = get_num_groups(0);
     size_t grp_size = get_local_size(0);

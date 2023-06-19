@@ -1,5 +1,6 @@
 #ifndef _CL_STATE_H_
 #define _CL_STATE_H_
+#define CL_TARGET_OPENCL_VERSION 200
 #include <CL/cl.h>
 
 #define MAP_MASS 0
