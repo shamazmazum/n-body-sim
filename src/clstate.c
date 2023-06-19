@@ -6,12 +6,12 @@
 #include <program_loc.h>
 #include "clstate.h"
 
-#define KernelHelper(place, name) do {                          \
-    place = clCreateKernel (state->program, name, NULL);        \
-    if (place == NULL) {                                        \
-        fprintf (stderr, "Cannot create kernel: %s\n", name);   \
-        goto bad;                                               \
-    }                                                           \
+#define KernelHelper(place, name) do {                              \
+        place = clCreateKernel (state->program, name, NULL);        \
+        if (place == NULL) {                                        \
+            fprintf (stderr, "Cannot create kernel: %s\n", name);   \
+            goto bad;                                               \
+        }                                                           \
     } while (0)
 
 #define ReduceToScalarHelper(name) cl_float name (struct cl_state *state) \
@@ -51,7 +51,6 @@ struct cl_state {
     cl_kernel reduce2;
 
     size_t nbodies;
-    cl_mem mass;
     cl_mem pos;
     cl_mem velocity;
     cl_mem tmp_scalar;
@@ -64,7 +63,6 @@ void destroy_cl_state(struct cl_state *state)
 {
     if (state == NULL) return;
     if (state->tmp_scalar != NULL) clReleaseMemObject (state->tmp_scalar);
-    if (state->mass != NULL) clReleaseMemObject (state->mass);
     if (state->pos != NULL) clReleaseMemObject (state->pos);
     if (state->velocity != NULL) clReleaseMemObject (state->velocity);
     if (state->step != NULL) clReleaseKernel (state->step);
@@ -187,39 +185,32 @@ size_t initialize_memory (struct cl_state *state, size_t n)
     cl_ulong red2_size = state->group_size;
     cl_ulong red1_size = n;
 
-    state->mass = clCreateBuffer (state->context, CL_MEM_READ_ONLY, n*sizeof(cl_float), NULL, NULL);
-    if (state->mass == NULL) return 0;
-
     state->pos = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float2), NULL, NULL);
     if (state->pos == NULL) return 0;
 
-    state->velocity = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float2), NULL, NULL);
+    state->velocity = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float2),
+                                      NULL, NULL);
     if (state->velocity == NULL) return 0;
 
-    state->tmp_scalar = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float), NULL, NULL);
+    state->tmp_scalar = clCreateBuffer (state->context, CL_MEM_READ_WRITE, n*sizeof(cl_float),
+                                        NULL, NULL);
     if (state->tmp_scalar == NULL) return 0;
 
-    clSetKernelArg (state->step, 0, sizeof(cl_mem), &state->mass);
-    clSetKernelArg (state->step, 1, sizeof(cl_mem), &state->pos);
-    clSetKernelArg (state->step, 2, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->step, 0, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->step, 1, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->step, 2, sizeof(cl_float2) * state->group_size, NULL);
     clSetKernelArg (state->step, 3, sizeof(cl_float), &state->delta);
-    clSetKernelArg (state->step, 4, sizeof(cl_float) * state->group_size, NULL);
-    clSetKernelArg (state->step, 5, sizeof(cl_float2) * state->group_size, NULL);
 
-    clSetKernelArg (state->kinetic_energy, 0, sizeof(cl_mem), &state->mass);
-    clSetKernelArg (state->kinetic_energy, 1, sizeof(cl_mem), &state->velocity);
-    clSetKernelArg (state->kinetic_energy, 2, sizeof(cl_mem), &state->tmp_scalar);
+    clSetKernelArg (state->kinetic_energy, 0, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->kinetic_energy, 1, sizeof(cl_mem), &state->tmp_scalar);
 
-    clSetKernelArg (state->potential_energy, 0, sizeof(cl_mem), &state->mass);
-    clSetKernelArg (state->potential_energy, 1, sizeof(cl_mem), &state->pos);
-    clSetKernelArg (state->potential_energy, 2, sizeof(cl_mem), &state->tmp_scalar);
-    clSetKernelArg (state->potential_energy, 3, sizeof(cl_float) * state->group_size, NULL);
-    clSetKernelArg (state->potential_energy, 4, sizeof(cl_float2) * state->group_size, NULL);
+    clSetKernelArg (state->potential_energy, 0, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->potential_energy, 1, sizeof(cl_mem), &state->tmp_scalar);
+    clSetKernelArg (state->potential_energy, 2, sizeof(cl_float2) * state->group_size, NULL);
 
-    clSetKernelArg (state->angular_momentum, 0, sizeof(cl_mem), &state->mass);
-    clSetKernelArg (state->angular_momentum, 1, sizeof(cl_mem), &state->pos);
-    clSetKernelArg (state->angular_momentum, 2, sizeof(cl_mem), &state->velocity);
-    clSetKernelArg (state->angular_momentum, 3, sizeof(cl_mem), &state->tmp_scalar);
+    clSetKernelArg (state->angular_momentum, 0, sizeof(cl_mem), &state->pos);
+    clSetKernelArg (state->angular_momentum, 1, sizeof(cl_mem), &state->velocity);
+    clSetKernelArg (state->angular_momentum, 2, sizeof(cl_mem), &state->tmp_scalar);
 
     clSetKernelArg (state->reduce1, 0, sizeof(cl_mem), &state->tmp_scalar);
     clSetKernelArg (state->reduce1, 1, sizeof(cl_float) * state->group_size, NULL);
@@ -235,22 +226,17 @@ size_t initialize_memory (struct cl_state *state, size_t n)
 void* map_gpu_memory (struct cl_state *state, int which, cl_map_flags flags)
 {
     cl_mem buffer;
-    size_t size;
+    size_t size = sizeof(cl_float2) * state->nbodies;
 
     switch (which) {
-    case MAP_MASS:
-        buffer = state->mass;
-        size = sizeof(cl_float) * state->nbodies;
-        break;
     case MAP_POSITION:
         buffer = state->pos;
-        size = sizeof(cl_float2) * state->nbodies;
         break;
     case MAP_VELOCITY:
         buffer = state->velocity;
-        size = sizeof(cl_float2) * state->nbodies;
         break;
     }
+
     void *res = clEnqueueMapBuffer (state->queue, buffer, CL_TRUE, flags, 0, size, 0, NULL, NULL, NULL);
     return res;
 }
@@ -260,9 +246,6 @@ void unmap_gpu_memory (struct cl_state *state, int which, void *ptr)
     cl_mem buffer;
 
     switch (which) {
-    case MAP_MASS:
-        buffer = state->mass;
-        break;
     case MAP_POSITION:
         buffer = state->pos;
         break;
@@ -286,11 +269,8 @@ void take_step (struct cl_state *state)
 int save_gpu_memory (struct cl_state *state, int which, const char *name)
 {
     FILE *handle;
-    cl_float2 *vector;
-    cl_float *scalar;
-    void *map;
+    cl_float2 *map = NULL;
     size_t i;
-    int scalar_map = (which == MAP_MASS);
     int res = 0;
 
     handle = fopen (name, "w");
@@ -298,15 +278,11 @@ int save_gpu_memory (struct cl_state *state, int which, const char *name)
 
     map = map_gpu_memory (state, which, CL_MAP_READ);
     if (map == NULL) goto done;
-    scalar = map;
-    vector = map;
 
     for (i=0; i<state->nbodies; i++) {
-        if (scalar_map)
-            fprintf (handle, "%.10f\n", scalar[i]);
-        else
-            fprintf (handle, "%.10f %.10f\n", vector[i].x, vector[i].y);
+        fprintf (handle, "%.10f %.10f\n", map[i].x, map[i].y);
     }
+
     unmap_gpu_memory (state, which, map);
     res = 1;
 
@@ -318,11 +294,8 @@ done:
 int restore_gpu_memory (struct cl_state *state, int which, const char *name)
 {
     FILE *handle;
-    cl_float2 *vector;
-    cl_float *scalar;
-    void *map = NULL;
+    cl_float2 *map = NULL;
     size_t i;
-    int scalar_map = (which == MAP_MASS);
     int res = 0;
 
     handle = fopen (name, "r");
@@ -330,21 +303,11 @@ int restore_gpu_memory (struct cl_state *state, int which, const char *name)
 
     map = map_gpu_memory (state, which, CL_MAP_WRITE);
     if (map == NULL) goto done;
-    scalar = map;
-    vector = map;
     for (i=0; i<state->nbodies; i++) {
-        if (scalar_map) {
-            res = fscanf (handle, "%f\n", &scalar[i]);
-            if (res != 1) {
-                res = 0;
-                goto done;
-            }
-        } else {
-            res = fscanf (handle, "%f %f\n", &vector[i].x, &vector[i].y);
-            if (res != 2) {
-                res = 0;
-                goto done;
-            }
+        res = fscanf (handle, "%f %f\n", &map[i].x, &map[i].y);
+        if (res != 2) {
+            res = 0;
+            goto done;
         }
     }
     res = 1;

@@ -36,7 +36,6 @@ static struct config_parameters {
 
     const char *state_position;
     const char *state_velocity;
-    const char *state_mass;
 } config = {
     .nbodies         = 0,
     .output_steps    = 100,
@@ -110,15 +109,11 @@ static int load_state (struct cl_state *state, const struct config_parameters *c
     int res;
 
     assert (config->state_position != NULL &&
-            config->state_velocity != NULL &&
-            config->state_mass != NULL);
+            config->state_velocity != NULL);
     res = restore_gpu_memory (state, MAP_POSITION, config->state_position);
     if (!res) return 0;
 
     res = restore_gpu_memory (state, MAP_VELOCITY, config->state_velocity);
-    if (!res) return 0;
-
-    res = restore_gpu_memory (state, MAP_MASS, config->state_mass);
     if (!res) return 0;
 
     return 1;
@@ -146,7 +141,7 @@ static void usage()
              "n-body-sim -n nbodies [-o|--output-steps steps]\n"
              "[-i|--invariant-steps steps] [--output-prefix prefix]\n"
              "[-d delta] [-s solver] [--output-energy out] [--no-update]\n"
-             "position velocity mass\n");
+             "position velocity\n");
     exit(1);
 }
 
@@ -203,11 +198,10 @@ int main (int argc, char *argv[])
 
     argc -= optind;
     argv += optind;
-    if (argc != 3 || config.nbodies == 0) usage();
+    if (argc != 2 || config.nbodies == 0) usage();
 
     config.state_position = argv[0];
     config.state_velocity = argv[1];
-    config.state_mass     = argv[2];
 
     print_config (&config);
     size_t nbodies = config.nbodies;

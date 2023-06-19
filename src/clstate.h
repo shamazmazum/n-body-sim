@@ -3,7 +3,6 @@
 #define CL_TARGET_OPENCL_VERSION 200
 #include <CL/cl.h>
 
-#define MAP_MASS 0
 #define MAP_POSITION 1
 #define MAP_VELOCITY 2
 

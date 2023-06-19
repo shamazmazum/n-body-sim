@@ -1,7 +1,8 @@
 #define G 100.0f
+#define M 5.0f
 #define EPS 1.0f
 
-float2 accel (float2 r_me, __local float *m, __local float2 *r)
+float2 accel (float2 r_me, __local float2 *r)
 {
     size_t grp_size = get_local_size(0);
     size_t i;
@@ -11,15 +12,13 @@ float2 accel (float2 r_me, __local float *m, __local float2 *r)
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
         float dist_sq = pown(dir.x, 2) + pown(dir.y, 2);
-        res += G*m[i]/powr(dist_sq + EPS, 3.0f/2) * dir;
+        res += G*M/powr(dist_sq + EPS, 3.0f/2) * dir;
     }
 
     return res;
 }
 
 float2 collect_accel (float2 r_me,
-                      __constant float *m,
-                      __local float *loc_m,
                       __global float2 *r,
                       __local float2 *loc_r)
 {
@@ -33,22 +32,19 @@ float2 collect_accel (float2 r_me,
     for (i=0; i< num_groups; i++) {
         size_t glob_id = i*grp_size + loc_id;
         loc_r[loc_id] = r[glob_id];
-        loc_m[loc_id] = m[glob_id];
         barrier (CLK_LOCAL_MEM_FENCE);
 
-        res += accel (r_me, loc_m, loc_r);
+        res += accel (r_me, loc_r);
         barrier (CLK_LOCAL_MEM_FENCE);
     }
 
     return res;
 }
 
-__kernel void take_step_euler (__constant float *m,
-                               __global float2 *r,
+__kernel void take_step_euler (__global float2 *r,
                                __global float2 *v,
-                               float delta,
-                               __local float *loc_m,
-                               __local float2 *loc_r)
+                               __local float2 *loc_r,
+                               float delta)
 {
     size_t glob_id = get_global_id(0);
 
@@ -57,18 +53,16 @@ __kernel void take_step_euler (__constant float *m,
     float2 v_me = v[glob_id];
 
     float2 nr = v_me;
-    float2 nv = collect_accel (r_me, m, loc_m, r, loc_r);
+    float2 nv = collect_accel (r_me, r, loc_r);
 
     r[glob_id] = r_me + nr * delta;
     v[glob_id] = v_me + nv * delta;
 }
 
-__kernel void take_step_rk2 (__constant float *m,
-                             __global float2 *r,
+__kernel void take_step_rk2 (__global float2 *r,
                              __global float2 *v,
-                             float delta,
-                             __local float *loc_m,
-                             __local float2 *loc_r)
+                             __local float2 *loc_r,
+                             float delta)
 {
     size_t glob_id = get_global_id(0);
 
@@ -76,7 +70,7 @@ __kernel void take_step_rk2 (__constant float *m,
     float2 r_me = r[glob_id];
     float2 v_me = v[glob_id];
 
-    float2 mv = collect_accel (r_me, m, loc_m, r, loc_r);
+    float2 mv = collect_accel (r_me, r, loc_r);
     float2 mr = v_me;
 
     float2 vpred = v_me + delta * mv;
@@ -86,19 +80,17 @@ __kernel void take_step_rk2 (__constant float *m,
     v[glob_id] = vpred;
     barrier (CLK_GLOBAL_MEM_FENCE);
 
-    float2 nv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 nv = collect_accel (rpred, r, loc_r);
     float2 nr = vpred;
 
     r[glob_id] = r_me + (nr + mr) * delta / 2;
     v[glob_id] = v_me + (nv + mv) * delta / 2;
 }
 
-__kernel void take_step_rk4 (__constant float *m,
-                             __global float2 *r,
+__kernel void take_step_rk4 (__global float2 *r,
                              __global float2 *v,
-                             float delta,
-                             __local float *loc_m,
-                             __local float2 *loc_r)
+                             __local float2 *loc_r,
+                             float delta)
 {
     size_t glob_id = get_global_id(0);
 
@@ -108,7 +100,7 @@ __kernel void take_step_rk4 (__constant float *m,
     float2 vpred;
     float2 rpred;
 
-    float2 mv = collect_accel (r_me, m, loc_m, r, loc_r);
+    float2 mv = collect_accel (r_me, r, loc_r);
     float2 mr = v_me;
 
     vpred = v_me + delta * mv / 2;
@@ -118,7 +110,7 @@ __kernel void take_step_rk4 (__constant float *m,
     v[glob_id] = vpred;
     barrier (CLK_GLOBAL_MEM_FENCE);
 
-    float2 nv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 nv = collect_accel (rpred, r, loc_r);
     float2 nr = vpred;
 
     vpred = v_me + delta * nv / 2;
@@ -128,7 +120,7 @@ __kernel void take_step_rk4 (__constant float *m,
     v[glob_id] = vpred;
     barrier (CLK_GLOBAL_MEM_FENCE);
 
-    float2 pv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 pv = collect_accel (rpred, r, loc_r);
     float2 pr = vpred;
 
     vpred = v_me + delta * pv;
@@ -138,25 +130,23 @@ __kernel void take_step_rk4 (__constant float *m,
     v[glob_id] = vpred;
     barrier (CLK_GLOBAL_MEM_FENCE);
 
-    float2 qv = collect_accel (rpred, m, loc_m, r, loc_r);
+    float2 qv = collect_accel (rpred, r, loc_r);
     float2 qr = vpred;
 
     r[glob_id] = r_me + (mr + 2*nr + 2*pr + qr) * delta / 6;
     v[glob_id] = v_me + (mv + 2*nv + 2*pv + qv) * delta / 6;
 }
 
-__kernel void kinetic_energy (__constant float *m,
-                              __constant float2 *velocity,
+__kernel void kinetic_energy (__constant float2 *velocity,
                               __global float *out)
 {
     size_t idx = get_global_id(0);
-
     float norm = length (velocity[idx]);
-    out[idx] = m[idx] * pown(norm, 2) / 2;
+
+    out[idx] = M * pown(norm, 2) / 2;
 }
 
-__kernel void angular_momentum (__constant float *m,
-                                __constant float2 *position,
+__kernel void angular_momentum (__constant float2 *position,
                                 __constant float2 *velocity,
                                 __global float *out)
 {
@@ -164,10 +154,10 @@ __kernel void angular_momentum (__constant float *m,
     float2 r = position[idx];
     float2 v = velocity[idx];
 
-    out[idx] = m[idx] * (r.x * v.y - r.y * v.x);
+    out[idx] = M * (r.x * v.y - r.y * v.x);
 }
 
-float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
+float pe_group (float2 r_me, __local float2 *r)
 {
     size_t grp_size = get_local_size(0);
     size_t i;
@@ -177,7 +167,7 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
     for (i=0; i<grp_size; i++) {
         float2 dir = r[i] - r_me;
         float dist_sq = pown(dir.x, 2) + pown(dir.y, 2);
-        res += -G*m_me*m[i]/sqrt(dist_sq + EPS);
+        res += -G*M*M/sqrt(dist_sq + EPS);
     }
 
     return res;
@@ -190,10 +180,8 @@ float pe_group (float m_me, float2 r_me, __local float *m, __local float2 *r)
  * ji. Because this function is not called often, I leave it as it
  * is.
  */
-__kernel void potential_energy (__constant float *m,
-                                __constant float2 *r,
+__kernel void potential_energy (__constant float2 *r,
                                 __global float *out,
-                                __local float *loc_m,
                                 __local float2 *loc_r)
 {
     size_t num_groups = get_num_groups(0);
@@ -203,20 +191,18 @@ __kernel void potential_energy (__constant float *m,
     size_t i, idx;
 
     float res = 0.0f;
-    float m_me = m[glob_id];
     float2 r_me = r[glob_id];
 
     for (i=0; i<num_groups; i++) {
         size_t idx = i*grp_size + loc_id;
         loc_r[loc_id] = r[idx];
-        loc_m[loc_id] = m[idx];
         barrier (CLK_LOCAL_MEM_FENCE);
 
-        res += pe_group (m_me, r_me, loc_m, loc_r);
+        res += pe_group (r_me, loc_r);
         barrier (CLK_LOCAL_MEM_FENCE);
     }
 
-    out[glob_id] = (res + G*pown(m_me, 2)/sqrt(EPS))/ 2;
+    out[glob_id] = (res + G*M*M/sqrt(EPS))/ 2;
 }
 
 __kernel void reduce (__global float *array,
