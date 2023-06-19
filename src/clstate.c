@@ -23,13 +23,10 @@
                                                                         \
         clEnqueueNDRangeKernel (state->queue, state->name, 1, NULL,     \
                                 &n, &nloc, 0, NULL, NULL);              \
-        clFinish (state->queue);                                        \
         clEnqueueNDRangeKernel (state->queue, state->reduce1, 1, NULL,  \
                                 &reduce1n, &nloc, 0, NULL, NULL);       \
-        clFinish (state->queue);                                        \
         clEnqueueNDRangeKernel (state->queue, state->reduce2, 1, NULL,  \
                                 &nloc, &nloc, 0, NULL, NULL);           \
-        clFinish (state->queue);                                        \
         clEnqueueReadBuffer (state->queue, state->tmp_scalar,           \
                              CL_TRUE, 0, sizeof (cl_float), &res, 0,    \
                              NULL, NULL);                               \
@@ -255,7 +252,6 @@ void unmap_gpu_memory (struct cl_state *state, int which, void *ptr)
     }
 
     clEnqueueUnmapMemObject (state->queue, buffer, ptr, 0, NULL, NULL);
-    clFinish (state->queue);
 }
 
 void take_step (struct cl_state *state)
@@ -263,7 +259,6 @@ void take_step (struct cl_state *state)
     size_t n = state->nbodies;
     size_t nloc = state->group_size;
     clEnqueueNDRangeKernel (state->queue, state->step, 1, NULL, &n, &nloc, 0, NULL, NULL);
-    clFinish (state->queue);
 }
 
 int save_gpu_memory (struct cl_state *state, int which, const char *name)

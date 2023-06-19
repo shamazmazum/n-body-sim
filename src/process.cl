@@ -35,7 +35,6 @@ float2 collect_accel (float2 r_me,
         barrier (CLK_LOCAL_MEM_FENCE);
 
         res += accel (r_me, loc_r);
-        barrier (CLK_LOCAL_MEM_FENCE);
     }
 
     return res;
